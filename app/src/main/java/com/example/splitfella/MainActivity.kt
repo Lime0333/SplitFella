@@ -195,7 +195,33 @@ fun App(modifier: Modifier = Modifier,
     }
 
     when(screen){
+        0 -> {
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Top
+            ){
+                Button(onClick = {
+                    screen = 1
+                }){
+                    Text("Dodawanie zdarzeń")
+                }
+                Button(onClick = {
+                    screen = 3
+                }){
+                    Text("Podsumowanie długów")
+                }
+                Spacer(modifier = Modifier.height(30.dp))
+                Button(onClick = {
+                    screen = 2
+                }){
+                    Text("Lista użytkowników")
+                }
 
+
+            }
+        }
         1 -> {
             var isSeperateValues by remember{mutableStateOf(false)}
             val userValues = remember { mutableStateListOf<String>() }
@@ -385,14 +411,9 @@ fun App(modifier: Modifier = Modifier,
                 verticalArrangement = Arrangement.Bottom
             ){
                 Button(onClick = {
-                    screen = 3
+                    screen = 0
                 }) {
-                    Text("Podsumowanie długów")
-                }
-                Button(onClick = {
-                    screen = 2
-                }) {
-                    Text("Lista użytkowników")
+                    Text("☰")
                 }
             }
         }
@@ -458,9 +479,9 @@ fun App(modifier: Modifier = Modifier,
                 verticalArrangement = Arrangement.Bottom
             ){
                 Button(onClick = {
-                    screen = 1
+                    screen = 0
                 }){
-                    Text("Dodawanie zdarzeń")
+                    Text("☰")
                 }
             }
         }
@@ -494,9 +515,9 @@ fun App(modifier: Modifier = Modifier,
                 verticalArrangement = Arrangement.Bottom
             ){
                 Button(onClick = {
-                    screen = 1
+                    screen = 0
                 }){
-                    Text("Dodawanie zdarzeń")
+                    Text("☰")
                 }
 
             }
