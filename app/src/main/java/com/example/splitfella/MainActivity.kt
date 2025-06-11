@@ -56,7 +56,7 @@ class MainActivity : ComponentActivity() {
 
 @Serializable
 data class User(val name: String, val id: Int, val debts: MutableMap<Int, Float> = mutableMapOf<Int, Float>()){
-    fun simpleDebtSummary(users: List<User>, events: List<Event>): String{
+    fun simpleDebtSummary(users: List<User>, events: List<Event>, currencies: MutableMap<String, Float>): String{
         var result = ""
         var debt: Float
 
@@ -65,7 +65,7 @@ data class User(val name: String, val id: Int, val debts: MutableMap<Int, Float>
                 debt = 0f
                 for (e in events) {
                     if (it.id == e.payerID) {
-                        debt += e.values[id] ?: 0f
+                        debt += (e.values[id] ?: 0f) * (currencies[e.currency] ?: 1f)
                     }
                 }
                 result += "   ${it.name}: ${debt}\n"
@@ -73,14 +73,14 @@ data class User(val name: String, val id: Int, val debts: MutableMap<Int, Float>
         }
         return result
     }
-    fun extractDebts(users: List<User>, events: List<Event>): String{
+    fun extractDebts(users: List<User>, events: List<Event>, currecies: MutableMap<String, Float>): String{
         debts.clear()
         users.forEach{ u ->
             debts[u.id] = 0f
             if(u.id!=id){
                 events.forEach{ e ->
                     if(e.payerID == u.id){
-                        debts[u.id] = debts.getOrDefault(u.id, 0f) + (e.values[id] ?: 0f)
+                        debts[u.id] = debts.getOrDefault(u.id, 0f) + ((e.values[id] ?: 0f) * (currecies[e.currency] ?: 1f))
                     }
                 }
             }
@@ -100,20 +100,20 @@ data class User(val name: String, val id: Int, val debts: MutableMap<Int, Float>
 }
 
 @Serializable
-data class Event(val name:String, val values: MutableMap<Int, Float> = mutableMapOf(), val payerID: Int, val date:String = ""){
+data class Event(val name:String, val values: MutableMap<Int, Float> = mutableMapOf(), val payerID: Int, val date:String = "", val currency: String = "PLN"){
     fun print(users: List<User>, addTab: Boolean = false): String{
         var userSummary= ""
         values.entries.forEach{
             val currUserID = it
-            userSummary += "\n${if(addTab)" " else ""}  ${users.find{it.id == currUserID.key}?.name ?: "Nieznaleziono"}: ${it.value}zł ${if(payerID==currUserID.key) "(płaci)" else ""}"
+            userSummary += "\n${if(addTab)" " else ""}  ${users.find{it.id == currUserID.key}?.name ?: "Nieznaleziono"}: ${it.value} $currency ${if(payerID==currUserID.key) "(płaci)" else ""}"
         }
         return("${if(addTab)" " else ""}${name}    ${date}${userSummary}\n")
     }
 }
 
-fun summarizeDebts(users: SnapshotStateList<User>, events: SnapshotStateList<Event>){
+fun summarizeDebts(users: SnapshotStateList<User>, events: SnapshotStateList<Event>, currecies: MutableMap<String, Float>){
     users.forEach{ u->
-        u.extractDebts(users, events)
+        u.extractDebts(users, events, currecies)
     }
     users.forEach{ u->
         users.forEach{ u2 ->
@@ -187,6 +187,9 @@ fun App(modifier: Modifier = Modifier,
 
     MyAlert(alertTitle, alertText, showAlert, alertDismiss)
 
+    val currencies = remember { mutableStateMapOf("PLN" to 1f)}
+    var currCurrency by remember { mutableStateOf("PLN") }
+
     fun setAlert( text: String, title: String = "Alert", dismissFoo: () -> Unit = {showAlert=false}){
         alertTitle = title
         alertText = text
@@ -205,7 +208,7 @@ fun App(modifier: Modifier = Modifier,
                 Button(onClick = {
                     screen = 1
                 }){
-                    Text("Dodawanie zdarzeń")
+                    Text("Dodawanie płatności")
                 }
                 Button(onClick = {
                     screen = 3
@@ -217,6 +220,12 @@ fun App(modifier: Modifier = Modifier,
                     screen = 2
                 }){
                     Text("Lista użytkowników")
+                }
+                Spacer(modifier = Modifier.height(30.dp))
+                Button(onClick = {
+                    screen = 4
+                }){
+                    Text("Kursy walut")
                 }
 
 
@@ -230,6 +239,7 @@ fun App(modifier: Modifier = Modifier,
             }
             var expanded by remember { mutableStateOf(false) }
             var expanded2 by remember { mutableStateOf(false) }
+            var expanded3 by remember { mutableStateOf(false) }
             var payer by remember { mutableIntStateOf(-1) }
             var eventName by remember {mutableStateOf("Obiad - Rzym")}
             var fullPrice by remember {mutableStateOf("")}
@@ -284,29 +294,49 @@ fun App(modifier: Modifier = Modifier,
                         keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
                     )
                 }
-
-                Box {
-                    Button(onClick = { expanded = true }) {
-                        if(payer != -1){
-                            Text("Płacący: ${users.find{it.id == payer}?.name ?:"Nieznaleziono"}")
+                Row() {
+                    Box {
+                        Button(onClick = { expanded = true }) {
+                            if (payer != -1) {
+                                Text("Płacący: ${users.find { it.id == payer }?.name ?: "Nieznaleziono"}")
+                            } else {
+                                Text("Wybierz płacącego")
+                            }
                         }
-                        else{
-                            Text("Wybierz płacącego")
+
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            users.forEach { user ->
+                                DropdownMenuItem(
+                                    text = { Text(user.name) },
+                                    onClick = {
+                                        payer = user.id
+                                        expanded = false
+                                    }
+                                )
+                            }
                         }
                     }
+                    Box {
+                        Button(onClick = { expanded3 = true }) {
+                            Text("Waluta: ${currCurrency}")
+                        }
 
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        users.forEach { user ->
-                            DropdownMenuItem(
-                                text = { Text(user.name) },
-                                onClick = {
-                                    payer = user.id
-                                    expanded = false
-                                }
-                            )
+                        DropdownMenu(
+                            expanded = expanded3,
+                            onDismissRequest = { expanded3 = false }
+                        ) {
+                            currencies.forEach { (code, rate) ->
+                                DropdownMenuItem(
+                                    text = { Text("$code: $rate") },
+                                    onClick = {
+                                        currCurrency = code
+                                        expanded3 = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -362,7 +392,7 @@ fun App(modifier: Modifier = Modifier,
                         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                         val currentDate = sdf.format(Date())
 
-                        events.add(Event(eventName, map, payer, currentDate))
+                        events.add(Event(eventName, map, payer, currentDate, currCurrency))
                         coroutineScope.launch {
                             DataStoreManager.saveUsers(context, users)
                             DataStoreManager.saveEvents(context, events)
@@ -497,14 +527,87 @@ fun App(modifier: Modifier = Modifier,
                 Text("          Podstawowe")
                 users.forEach{
                     Text(it.name)
-                    Text(it.simpleDebtSummary(users, events))
+                    Text(it.simpleDebtSummary(users, events, currencies))
                 }
                 Spacer(modifier = Modifier.height(50.dp))
-                summarizeDebts(users, events)
+                summarizeDebts(users, events, currencies)
                 Text("          Uproszczone")
                 users.forEach{
                     Text(it.debtsToString(users))
                     Spacer(modifier = Modifier.height(30.dp))
+                }
+
+            }
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Bottom
+            ){
+                Button(onClick = {
+                    screen = 0
+                }){
+                    Text("☰")
+                }
+
+            }
+        }
+        4 -> {
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Top
+            ){
+                Text("Kursy walut")
+                currencies.forEach{(code, rate) ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ){
+                        Text("$code    ")
+                        if(code == "PLN"){
+                            Text("1.00")
+                        }
+                        else {
+                            TextField(
+                                value = rate.toString(),
+                                onValueChange = {
+                                    val newRate = it.toFloatOrNull()
+                                    if (newRate != null) {
+                                        currencies[code] = newRate
+                                    }
+                                },
+                                label = { Text("kurs do 1PLN") },
+                                modifier = Modifier.width(150.dp),
+                                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+                            )
+                        }
+                        if(code!="PLN") {
+                            Button(
+                                onClick = {
+                                    currencies.remove(code)
+                                }
+                            ) {
+                                Text("X")
+                            }
+                        }
+                    }
+                }
+
+                var newCurrencyName by remember { mutableStateOf("")}
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ){
+                    TextField(
+                        value = newCurrencyName,
+                        onValueChange = { newCurrencyName = it },
+                        label = { Text("kod waluty") },
+                        modifier = Modifier.width(180.dp)
+                    )
+                    Button(onClick = {
+                        currencies[newCurrencyName] = 1.0f
+                    }){Text("Dodaj nową walutę")}
+
                 }
 
             }
