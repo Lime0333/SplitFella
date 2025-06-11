@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Serializable
-data class User(val name: String, val id: Int){
+data class User(val name: String, val id: Int, val debts: MutableMap<Int, Float> = mutableMapOf<Int, Float>()){
     fun printSimpleDebts(users: List<User>, events: List<Event>): String{
         var result = ""
         var debt = 0f
@@ -70,8 +70,21 @@ data class User(val name: String, val id: Int){
                 result += "   ${it.name}: ${debt}\n"
             }
         }
-
         return result
+    }
+    fun extractDebts(users: List<User>, events: List<Event>): String{
+        debts.clear()
+        users.forEach{ u ->
+            debts[u.id] = 0f
+            if(u.id!=id){
+                events.forEach{ e ->
+                    if(e.payerID == u.id){
+                        debts[u.id] = debts.getOrDefault(u.id, 0f) + (e.values[id] ?: 0f)
+                    }
+                }
+            }
+        }
+        return debts.toString()
     }
 }
 
@@ -87,7 +100,11 @@ data class Event(val name:String, val values: MutableMap<Int, Float> = mutableMa
     }
 }
 
-fun summarizeDebt
+fun summarizeDebts(users: SnapshotStateList<User>, events: SnapshotStateList<Event>){
+    users.forEach{ u->
+        u.extractDebts(users, events)
+    }
+}
 
 @Composable
 fun App(modifier: Modifier = Modifier,
@@ -247,9 +264,13 @@ fun App(modifier: Modifier = Modifier,
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(100.dp))
-
+            }
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Bottom
+            ){
                 Button(onClick = {
                     screen = 3
                 }) {
@@ -316,7 +337,13 @@ fun App(modifier: Modifier = Modifier,
                         text="Dodaj testowych użytkowników"
                     )
                 }
-                Spacer(modifier = Modifier.height(250.dp))
+            }
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Bottom
+            ){
                 Button(onClick = {
                     screen = 1
                 }){
@@ -337,14 +364,20 @@ fun App(modifier: Modifier = Modifier,
                     Text(it.name)
                     Text(it.printSimpleDebts(users, events))
                 }
-
-
-                Spacer(modifier = Modifier.height(250.dp))
+                summarizeDebts(users, events)
+            }
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Bottom
+            ){
                 Button(onClick = {
                     screen = 1
                 }){
                     Text("Dodawanie zdarzeń")
                 }
+
             }
         }
     }
