@@ -104,6 +104,22 @@ fun summarizeDebts(users: SnapshotStateList<User>, events: SnapshotStateList<Eve
     users.forEach{ u->
         u.extractDebts(users, events)
     }
+    users.forEach{ u->
+        users.forEach{ u2 ->
+            if((u.debts[u2.id] ?: 0f) > 0f){
+                if((u2.debts[u.id] ?: 0f) > 0f){
+                    if((u.debts[u2.id] ?: 0f) > (u2.debts[u.id] ?: 0f)){
+                        u.debts[u2.id] = u.debts.getOrDefault(u2.id, 0f) - u2.debts.getOrDefault(u.id, 0f)
+                        u2.debts[u.id] = 0f
+                    }
+                    else{
+                        u2.debts[u.id] = u2.debts.getOrDefault(u.id, 0f) - u.debts.getOrDefault(u2.id, 0f)
+                        u.debts[u2.id] = 0f
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -365,6 +381,10 @@ fun App(modifier: Modifier = Modifier,
                     Text(it.printSimpleDebts(users, events))
                 }
                 summarizeDebts(users, events)
+                users.forEach{
+                    Text(it.debts.toString())
+                }
+
             }
             Column(
                 modifier = modifier
