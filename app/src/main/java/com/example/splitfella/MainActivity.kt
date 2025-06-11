@@ -87,6 +87,15 @@ data class User(val name: String, val id: Int, val debts: MutableMap<Int, Float>
         }
         return debts.toString()
     }
+    fun debtsToString(users: List<User>): String{
+        var result = "${name}:"
+        debts.forEach{(u2ID, v) ->
+            if(u2ID!=id) {
+                result += "\n   ${users.find { it.id == u2ID }?.name ?: "Nie znaleziono"}: ${v}zł"
+            }
+        }
+        return result
+    }
 
 }
 
@@ -186,6 +195,7 @@ fun App(modifier: Modifier = Modifier,
     }
 
     when(screen){
+
         1 -> {
             var isSeperateValues by remember{mutableStateOf(false)}
             val userValues = remember { mutableStateListOf<String>() }
@@ -463,13 +473,17 @@ fun App(modifier: Modifier = Modifier,
             ) {
                 Text("Podsumowanie")
                 Spacer(modifier = Modifier.height(30.dp))
+                Text("          Podstawowe")
                 users.forEach{
                     Text(it.name)
                     Text(it.simpleDebtSummary(users, events))
                 }
+                Spacer(modifier = Modifier.height(50.dp))
                 summarizeDebts(users, events)
+                Text("          Uproszczone")
                 users.forEach{
-                    Text(it.debts.toString())
+                    Text(it.debtsToString(users))
+                    Spacer(modifier = Modifier.height(30.dp))
                 }
 
             }
