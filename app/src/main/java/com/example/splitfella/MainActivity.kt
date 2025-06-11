@@ -21,6 +21,7 @@ import kotlinx.serialization.Serializable
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 
 
@@ -55,9 +56,9 @@ class MainActivity : ComponentActivity() {
 
 @Serializable
 data class User(val name: String, val id: Int, val debts: MutableMap<Int, Float> = mutableMapOf<Int, Float>()){
-    fun printSimpleDebts(users: List<User>, events: List<Event>): String{
+    fun simpleDebtSummary(users: List<User>, events: List<Event>): String{
         var result = ""
-        var debt = 0f
+        var debt: Float
 
         users.forEach{
             if(it.id!=id) {
@@ -86,6 +87,7 @@ data class User(val name: String, val id: Int, val debts: MutableMap<Int, Float>
         }
         return debts.toString()
     }
+
 }
 
 @Serializable
@@ -120,7 +122,41 @@ fun summarizeDebts(users: SnapshotStateList<User>, events: SnapshotStateList<Eve
             }
         }
     }
+    users.forEach{ u ->
+        users.forEach{ u2 ->
+            val a = u.debts[u2.id] ?: 0f
+            if(a > 0f) {
+                u2.debts.forEach { (u3ID, a2) ->
+                    if(a<a2 && u3ID != u.id && u3ID != u2.id){
+                        val a3 = u.debts.getOrDefault(u3ID, 0f)
+                        if(a3 > 0f){
+                            u.debts[u3ID] = u.debts.getOrDefault(u3ID, 0f) + u.debts.getOrDefault(u2.id, 0f)
+                            u2.debts[u3ID] = u2.debts.getOrDefault(u3ID, 0f) - u.debts.getOrDefault(u2.id, 0f)
+                            u.debts[u2.id] = 0f
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
+
+@Composable
+fun MyAlert(title: String, text: String, showDialog: Boolean, onDismiss: () -> Unit) {
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            confirmButton = {
+                Button(onClick = onDismiss) {
+                    Text("OK")
+                }
+            },
+            title = { Text(title) },
+            text = { Text(text) }
+        )
+    }
+}
+
 
 @Composable
 fun App(modifier: Modifier = Modifier,
@@ -134,6 +170,20 @@ fun App(modifier: Modifier = Modifier,
     var screen by remember { mutableIntStateOf(1)}
 
     var newUserName by remember {mutableStateOf("")}
+
+    var showAlert by remember { mutableStateOf(false)}
+    var alertTitle by remember { mutableStateOf("Alert")}
+    var alertText by remember { mutableStateOf("test alert")}
+    var alertDismiss by remember { mutableStateOf({showAlert=false}) }
+
+    MyAlert(alertTitle, alertText, showAlert, alertDismiss)
+
+    fun setAlert( text: String, title: String = "Alert", dismissFoo: () -> Unit = {showAlert=false}){
+        alertTitle = title
+        alertText = text
+        showAlert = true
+        alertDismiss = dismissFoo
+    }
 
     when(screen){
         1 -> {
@@ -225,25 +275,62 @@ fun App(modifier: Modifier = Modifier,
                     }
                 }
                 Button(onClick = {
-                    val map = mutableMapOf<Int, Float>()
-                    if(isSeperateValues){
-                        for (i in users.indices) {
-                            map[users[i].id] = fullPrice.toFloat() / 100 * userValues[i].toFloat()
+
+                    var check = true
+                    for (i in 0 until users.size) {
+                        val floatValue = userValues[i].toFloatOrNull()
+                        if(floatValue == null || floatValue < 0f){
+                            check = false
+                            setAlert("Wpisz prawidłowe wartości")
+                        }
+                        else if(payer < 0){
+                            check = false
+                            setAlert("Wybierz płacącego")
                         }
                     }
-                    else{
-                        for (i in users.indices) {
-                            map[users[i].id] = userValues[i].toFloat()
+                    val fullFloatOrNull = fullPrice.toFloatOrNull()
+                    if(users.size == 0){
+                        check = false
+                        setAlert("Dodaj użytkowników")
+                    }
+                    else if(isSeperateValues){
+                        var precentSum = 0f
+                        for(i in 0 until users.size){
+                            precentSum += userValues[i].toFloatOrNull() ?: 0f
+                        }
+                        if(fullFloatOrNull == null || fullFloatOrNull <= 0f) {
+                            check = false
+                            setAlert("Wpisz poprawną kwotę")
+                        }
+                        else if(abs(precentSum-100) > 1) {
+                            check = false
+                            setAlert("Suma procentów nie wynosi 100")
                         }
                     }
 
-                    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                    val currentDate = sdf.format(Date())
 
-                    events.add(Event(eventName, map, payer, currentDate))
-                    coroutineScope.launch {
-                        DataStoreManager.saveUsers(context, users)
-                        DataStoreManager.saveEvents(context, events)
+
+                    if(check) {
+                        val map = mutableMapOf<Int, Float>()
+                        if (isSeperateValues) {
+                            for (i in users.indices) {
+                                map[users[i].id] =
+                                    fullPrice.toFloat() / 100 * userValues[i].toFloat()
+                            }
+                        } else {
+                            for (i in users.indices) {
+                                map[users[i].id] = userValues[i].toFloat()
+                            }
+                        }
+
+                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                        val currentDate = sdf.format(Date())
+
+                        events.add(Event(eventName, map, payer, currentDate))
+                        coroutineScope.launch {
+                            DataStoreManager.saveUsers(context, users)
+                            DataStoreManager.saveEvents(context, events)
+                        }
                     }
                 }){
                     Text("Zatwierdź")
@@ -378,7 +465,7 @@ fun App(modifier: Modifier = Modifier,
                 Spacer(modifier = Modifier.height(30.dp))
                 users.forEach{
                     Text(it.name)
-                    Text(it.printSimpleDebts(users, events))
+                    Text(it.simpleDebtSummary(users, events))
                 }
                 summarizeDebts(users, events)
                 users.forEach{
