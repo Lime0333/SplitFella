@@ -1,0 +1,351 @@
+package com.example.splitfella
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.example.splitfella.ui.theme.SplitFellaTheme
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.KeyboardType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlinx.serialization.Serializable
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.launch
+
+
+
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            SplitFellaTheme {
+                Scaffold( modifier = Modifier.fillMaxSize() ) { innerPadding ->
+                    val context = applicationContext
+                    val users = remember { mutableStateListOf<User>() }
+                    val events = remember { mutableStateListOf<Event>() }
+
+                    LaunchedEffect(true) {
+                        users.addAll(DataStoreManager.loadUsers(context))
+                        events.addAll(DataStoreManager.loadEvents(context))
+                    }
+
+                    App(
+                        modifier = Modifier.padding(innerPadding),
+                        users = users,
+                        events = events,
+                        context = context
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Serializable
+data class User(val name: String, val id: Int){
+    fun printSimpleDebts(users: List<User>, events: List<Event>): String{
+        var result = ""
+        var debt = 0f
+
+        users.forEach{
+            if(it.id!=id) {
+                debt = 0f
+                for (e in events) {
+                    if (it.id == e.payerID) {
+                        debt += e.values[id] ?: 0f
+                    }
+                }
+                result += "   ${it.name}: ${debt}\n"
+            }
+        }
+
+        return result
+    }
+}
+
+@Serializable
+data class Event(val name:String, val values: MutableMap<Int, Float> = mutableMapOf(), val payerID: Int, val date:String = ""){
+    fun print(users: List<User>, addTab: Boolean = false): String{
+        var userSummary= ""
+        values.entries.forEach{
+            val currUserID = it
+            userSummary += "\n${if(addTab)" " else ""}  ${users.find{it.id == currUserID.key}?.name ?: "Nieznaleziono"}: ${it.value}zł ${if(payerID==currUserID.key) "(płaci)" else ""}"
+        }
+        return("${if(addTab)" " else ""}${name}    ${date}${userSummary}\n")
+    }
+}
+
+fun summarizeDebt
+
+@Composable
+fun App(modifier: Modifier = Modifier,
+        users: SnapshotStateList<User>,
+        events: SnapshotStateList<Event>,
+        context: android.content.Context
+        ) {
+
+    val coroutineScope = rememberCoroutineScope()
+
+    var screen by remember { mutableIntStateOf(1)}
+
+    var newUserName by remember {mutableStateOf("")}
+
+    when(screen){
+        1 -> {
+            var isSeperateValues by remember{mutableStateOf(false)}
+            val userValues = remember { mutableStateListOf<String>() }
+            users.forEach(){
+                userValues.add("")
+            }
+            var expanded by remember { mutableStateOf(false) }
+            var expanded2 by remember { mutableStateOf(false) }
+            var payer by remember { mutableIntStateOf(-1) }
+            var eventName by remember {mutableStateOf("Obiad - Rzym")}
+            var fullPrice by remember {mutableStateOf("")}
+
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Top
+            ) {
+                TextField(
+                    value = eventName,
+                    onValueChange = {eventName = it},
+                    label = {Text("Nazwa zdarzenia")}
+                )
+                Row(verticalAlignment = Alignment.CenterVertically){
+                    Text("osobne wartości  ")
+                    Switch(
+                        checked = isSeperateValues,
+                        onCheckedChange = {
+                            isSeperateValues = it
+                            if(isSeperateValues){
+                                val equalSplit = 100f/users.size
+                                users.forEachIndexed{index, value ->
+                                    userValues[index] = equalSplit.toString()
+                                }
+                            }
+                            else{
+                                users.forEachIndexed{index, value ->
+                                    userValues[index] = ""
+                                }
+                            }
+                        }
+                    )
+                    Text("  podział procentowy")
+                }
+
+                if(isSeperateValues) {
+                    TextField(
+                        value = fullPrice,
+                        onValueChange = {fullPrice = it},
+                        label = {Text("Całość")},
+                        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+                    )
+                }
+
+                users.forEachIndexed{index, value ->
+                    TextField(
+                        value=userValues[index],
+                        onValueChange = {userValues[index] = it},
+                        label = {Text(value.name)},
+                        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal)
+                    )
+                }
+
+                Box {
+                    Button(onClick = { expanded = true }) {
+                        if(payer != -1){
+                            Text("Płacący: ${users.find{it.id == payer}?.name ?:"Nieznaleziono"}")
+                        }
+                        else{
+                            Text("Wybierz płacącego")
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        users.forEach { user ->
+                            DropdownMenuItem(
+                                text = { Text(user.name) },
+                                onClick = {
+                                    payer = user.id
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Button(onClick = {
+                    val map = mutableMapOf<Int, Float>()
+                    if(isSeperateValues){
+                        for (i in users.indices) {
+                            map[users[i].id] = fullPrice.toFloat() / 100 * userValues[i].toFloat()
+                        }
+                    }
+                    else{
+                        for (i in users.indices) {
+                            map[users[i].id] = userValues[i].toFloat()
+                        }
+                    }
+
+                    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                    val currentDate = sdf.format(Date())
+
+                    events.add(Event(eventName, map, payer, currentDate))
+                    coroutineScope.launch {
+                        DataStoreManager.saveUsers(context, users)
+                        DataStoreManager.saveEvents(context, events)
+                    }
+                }){
+                    Text("Zatwierdź")
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(if(events.lastOrNull()==null) "" else "Ostatnia płatność:")
+                Text(events.lastOrNull()?.print(users,true)  ?:"")
+
+
+                Box {
+                    Button(onClick = { expanded2 = true }) {
+                        Text("Pokaż wszystkie płatności")
+                    }
+
+                    DropdownMenu(
+                        expanded = expanded2,
+                        onDismissRequest = { expanded2 = false }
+                    ) {
+                        events.forEachIndexed{index, currEvent ->
+                            Row{
+                                Text(currEvent.print(users))
+                                Button(onClick = {
+                                    events.removeAt(index)
+                                    coroutineScope.launch {
+                                        DataStoreManager.saveUsers(context, users)
+                                        DataStoreManager.saveEvents(context, events)
+                                    }
+                                }){
+                                    Text("X")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(100.dp))
+
+                Button(onClick = {
+                    screen = 3
+                }) {
+                    Text("Podsumowanie długów")
+                }
+                Button(onClick = {
+                    screen = 2
+                }) {
+                    Text("Lista użytkowników")
+                }
+            }
+        }
+        2 -> {
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Top
+            ) {
+                users.forEachIndexed{index, value ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ){
+                        Text(value.name)
+                        Button(onClick = {
+                            users.removeAt(index)
+                            coroutineScope.launch {
+                                DataStoreManager.saveUsers(context, users)
+                                DataStoreManager.saveEvents(context, events)
+                            }
+                        }){
+                            Text("X")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                TextField(
+                    value = newUserName,
+                    onValueChange = {newUserName=it},
+                    label = {Text("Nazwa nowego użytkownika")}
+                )
+                Button(onClick = {
+                    users.add(User(newUserName,(users.lastOrNull()?.id ?: -1) + 1))
+                    coroutineScope.launch {
+                        DataStoreManager.saveUsers(context, users)
+                        DataStoreManager.saveEvents(context, events)
+                    }
+                }) {
+                    Text(
+                        text="Dodaj użytkownika"
+                    )
+                }
+                Button(onClick = {
+                    users.add(User("Mario",(users.lastOrNull()?.id ?: -1) + 1))
+                    users.add(User("Luigi",(users.lastOrNull()?.id ?: -1) + 1))
+                    users.add(User("Steve",(users.lastOrNull()?.id ?: -1) + 1))
+                    coroutineScope.launch {
+                        DataStoreManager.saveUsers(context, users)
+                        DataStoreManager.saveEvents(context, events)
+                    }
+                }) {
+                    Text(
+                        text="Dodaj testowych użytkowników"
+                    )
+                }
+                Spacer(modifier = Modifier.height(250.dp))
+                Button(onClick = {
+                    screen = 1
+                }){
+                    Text("Dodawanie zdarzeń")
+                }
+            }
+        }
+        3 -> {
+            Column(
+                modifier = modifier
+                    .padding(16.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.Top
+            ) {
+                Text("Podsumowanie")
+                Spacer(modifier = Modifier.height(30.dp))
+                users.forEach{
+                    Text(it.name)
+                    Text(it.printSimpleDebts(users, events))
+                }
+
+
+                Spacer(modifier = Modifier.height(250.dp))
+                Button(onClick = {
+                    screen = 1
+                }){
+                    Text("Dodawanie zdarzeń")
+                }
+            }
+        }
+    }
+}
